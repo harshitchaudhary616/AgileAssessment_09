@@ -1,4 +1,3 @@
-```groovy
 pipeline {
     agent any
 
@@ -42,27 +41,17 @@ pipeline {
             steps {
                 sh '''
                     set -e
-
                     docker rm -f lms-test || true
-
-                    docker run -d \
-                        --name lms-test \
-                        -p 18081:80 \
-                        $IMAGE:$BUILD_NUMBER
-
+                    docker run -d --name lms-test -p 18081:80 $IMAGE:$BUILD_NUMBER
                     sleep 3
-
                     curl --fail http://localhost:18081/
-
                     docker rm -f lms-test
                 '''
             }
 
             post {
                 always {
-                    sh '''
-                        docker rm -f lms-test || true
-                    '''
+                    sh 'docker rm -f lms-test || true'
                 }
             }
         }
@@ -78,19 +67,10 @@ pipeline {
                 ]) {
                     sh '''
                         set -e
-
-                        echo "$DH_TOKEN" | docker login \
-                            --username "$DH_USER" \
-                            --password-stdin
-
+                        echo "$DH_TOKEN" | docker login --username "$DH_USER" --password-stdin
                         docker push $IMAGE:$BUILD_NUMBER
-
-                        docker tag \
-                            $IMAGE:$BUILD_NUMBER \
-                            $IMAGE:latest
-
+                        docker tag $IMAGE:$BUILD_NUMBER $IMAGE:latest
                         docker push $IMAGE:latest
-
                         docker logout
                     '''
                 }
@@ -108,45 +88,22 @@ pipeline {
                     sh '''
                         set -e
 
-                        echo "Checking Kubernetes context..."
                         kubectl config current-context
-
-                        echo "Checking Kubernetes nodes..."
                         kubectl get nodes
 
-                        echo "Applying Kubernetes deployment..."
                         kubectl apply -f deployment.yaml
 
-                        echo "Updating application image..."
-                        kubectl set image \
-                            deployment/university-lms \
-                            university-lms=$IMAGE:$BUILD_NUMBER
+                        kubectl set image deployment/university-lms university-lms=$IMAGE:$BUILD_NUMBER
 
-                        echo "Waiting for rollout..."
-
-                        if ! kubectl rollout status \
-                            deployment/university-lms \
-                            --timeout=120s; then
-
-                            echo "Deployment failed. Attempting rollback..."
-
-                            kubectl rollout undo \
-                                deployment/university-lms
-
-                            kubectl rollout status \
-                                deployment/university-lms \
-                                --timeout=120s
-
+                        if ! kubectl rollout status deployment/university-lms --timeout=120s; then
+                            echo "Deployment failed. Attempting rollback."
+                            kubectl rollout undo deployment/university-lms
+                            kubectl rollout status deployment/university-lms --timeout=120s
                             exit 1
                         fi
 
-                        echo "Deployment status:"
                         kubectl get deployment university-lms
-
-                        echo "Running pods:"
                         kubectl get pods
-
-                        echo "Available services:"
                         kubectl get services
                     '''
                 }
@@ -164,4 +121,3 @@ pipeline {
         }
     }
 }
-```

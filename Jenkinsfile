@@ -71,6 +71,7 @@ pipeline {
 
                         if ! kubectl rollout status \
                           deployment/university-lms --timeout=120s; then
+                            echo "Rollout failed; restoring previous revision"
                             kubectl rollout undo deployment/university-lms
                             kubectl rollout status \
                               deployment/university-lms --timeout=120s

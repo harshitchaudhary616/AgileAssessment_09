@@ -8,12 +8,28 @@ pipeline {
 
     environment {
         IMAGE = 'perkeylynx/university-lms'
+        PATH+DOCKER = '/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin'
     }
 
     stages {
         stage('Clone Code') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Check Tools') {
+            steps {
+                sh '''
+                    echo "Checking Git..."
+                    git --version
+
+                    echo "Checking Docker..."
+                    docker --version
+
+                    echo "Checking kubectl..."
+                    kubectl version --client
+                '''
             }
         }
 
@@ -26,12 +42,22 @@ pipeline {
         stage('Test Application') {
             steps {
                 sh '''
+                    set -e
                     docker rm -f lms-test || true
-                    docker run -d --name lms-test -p 18081:80 $IMAGE:$BUILD_NUMBER
+
+                    docker run -d --name lms-test \
+                        -p 18081:80 $IMAGE:$BUILD_NUMBER
+
                     sleep 3
-                    curl -f http://localhost:18081/
+                    curl --fail http://localhost:18081/
+
                     docker rm -f lms-test
                 '''
+            }
+            post {
+                always {
+                    sh 'docker rm -f lms-test || true'
+                }
             }
         }
 
@@ -45,11 +71,16 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        set -e
+
                         echo "$DH_TOKEN" | docker login \
-                          -u "$DH_USER" --password-stdin
+                            --username "$DH_USER" --password-stdin
+
                         docker push $IMAGE:$BUILD_NUMBER
+
                         docker tag $IMAGE:$BUILD_NUMBER $IMAGE:latest
                         docker push $IMAGE:latest
+
                         docker logout
                     '''
                 }
@@ -65,16 +96,23 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        set -e
+
                         kubectl apply -f deployment.yaml
+
                         kubectl set image deployment/university-lms \
-                          university-lms=$IMAGE:$BUILD_NUMBER
+                            university-lms=$IMAGE:$BUILD_NUMBER
 
                         if ! kubectl rollout status \
-                          deployment/university-lms --timeout=120s; then
-                            echo "Rollout failed; restoring previous revision"
+                            deployment/university-lms --timeout=120s; then
+
+                            echo "Deployment failed. Rolling back..."
+
                             kubectl rollout undo deployment/university-lms
+
                             kubectl rollout status \
-                              deployment/university-lms --timeout=120s
+                                deployment/university-lms --timeout=120s
+
                             exit 1
                         fi
                     '''
@@ -82,4 +120,15 @@ pipeline {
             }
         }
     }
+
+    post {
+        success {
+            echo 'University LMS pipeline completed successfully.'
+        }
+
+        failure {
+            echo 'Pipeline failed. Check the stage logs.'
+        }
+    }
 }
+x

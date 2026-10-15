@@ -5,6 +5,7 @@ metadata:
   name: university-lms
 spec:
   replicas: 2
+  revisionHistoryLimit: 5
   selector:
     matchLabels:
       app: university-lms

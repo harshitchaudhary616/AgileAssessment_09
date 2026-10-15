@@ -1,4 +1,4 @@
-
+```groovy
 pipeline {
     agent any
 
@@ -8,6 +8,7 @@ pipeline {
 
     environment {
         IMAGE = 'perkeylynx/university-lms'
+        PATH = "/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     }
 
     stages {
@@ -20,7 +21,7 @@ pipeline {
         stage('Check Tools') {
             steps {
                 sh '''
-                    export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+                    set -e
                     git --version
                     docker --version
                     kubectl version --client
@@ -31,7 +32,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
-                    export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+                    set -e
                     docker build -t $IMAGE:$BUILD_NUMBER .
                 '''
             }
@@ -40,22 +41,26 @@ pipeline {
         stage('Test Application') {
             steps {
                 sh '''
-                    export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
                     set -e
 
                     docker rm -f lms-test || true
-                    docker run -d --name lms-test \
-                        -p 18081:80 $IMAGE:$BUILD_NUMBER
+
+                    docker run -d \
+                        --name lms-test \
+                        -p 18081:80 \
+                        $IMAGE:$BUILD_NUMBER
 
                     sleep 3
+
                     curl --fail http://localhost:18081/
+
                     docker rm -f lms-test
                 '''
             }
+
             post {
                 always {
                     sh '''
-                        export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
                         docker rm -f lms-test || true
                     '''
                 }
@@ -72,15 +77,18 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
                         set -e
 
                         echo "$DH_TOKEN" | docker login \
-                            --username "$DH_USER" --password-stdin
+                            --username "$DH_USER" \
+                            --password-stdin
 
                         docker push $IMAGE:$BUILD_NUMBER
 
-                        docker tag $IMAGE:$BUILD_NUMBER $IMAGE:latest
+                        docker tag \
+                            $IMAGE:$BUILD_NUMBER \
+                            $IMAGE:latest
+
                         docker push $IMAGE:latest
 
                         docker logout
@@ -93,30 +101,53 @@ pipeline {
             steps {
                 withCredentials([
                     file(
-                        credentialsId: 'kubeconfig',
+                        credentialsId: 'kuberconfig',
                         variable: 'KUBECONFIG'
                     )
                 ]) {
                     sh '''
-                        export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
                         set -e
 
+                        echo "Checking Kubernetes context..."
+                        kubectl config current-context
+
+                        echo "Checking Kubernetes nodes..."
+                        kubectl get nodes
+
+                        echo "Applying Kubernetes deployment..."
                         kubectl apply -f deployment.yaml
 
-                        kubectl set image deployment/university-lms \
+                        echo "Updating application image..."
+                        kubectl set image \
+                            deployment/university-lms \
                             university-lms=$IMAGE:$BUILD_NUMBER
 
+                        echo "Waiting for rollout..."
+
                         if ! kubectl rollout status \
-                            deployment/university-lms --timeout=120s; then
+                            deployment/university-lms \
+                            --timeout=120s; then
 
-                            echo "Deployment failed. Rolling back..."
+                            echo "Deployment failed. Attempting rollback..."
 
-                            kubectl rollout undo deployment/university-lms
+                            kubectl rollout undo \
+                                deployment/university-lms
+
                             kubectl rollout status \
-                                deployment/university-lms --timeout=120s
+                                deployment/university-lms \
+                                --timeout=120s
 
                             exit 1
                         fi
+
+                        echo "Deployment status:"
+                        kubectl get deployment university-lms
+
+                        echo "Running pods:"
+                        kubectl get pods
+
+                        echo "Available services:"
+                        kubectl get services
                     '''
                 }
             }
@@ -133,3 +164,4 @@ pipeline {
         }
     }
 }
+```

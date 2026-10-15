@@ -21,7 +21,6 @@ pipeline {
             steps {
                 sh '''
                     export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
-
                     git --version
                     docker --version
                     kubectl version --client
@@ -67,7 +66,7 @@ pipeline {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'dockerhub-creds',
+                        credentialsId: 'dockerhub',
                         usernameVariable: 'DH_USER',
                         passwordVariable: 'DH_TOKEN'
                     )
@@ -77,7 +76,7 @@ pipeline {
                         set -e
 
                         echo "$DH_TOKEN" | docker login \
-                            -u "$DH_USER" --password-stdin
+                            --username "$DH_USER" --password-stdin
 
                         docker push $IMAGE:$BUILD_NUMBER
 
@@ -115,6 +114,7 @@ pipeline {
                             kubectl rollout undo deployment/university-lms
                             kubectl rollout status \
                                 deployment/university-lms --timeout=120s
+
                             exit 1
                         fi
                     '''
@@ -127,6 +127,7 @@ pipeline {
         success {
             echo 'University LMS pipeline completed successfully.'
         }
+
         failure {
             echo 'Pipeline failed. Check the stage logs.'
         }

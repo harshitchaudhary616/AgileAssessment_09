@@ -8,7 +8,6 @@ pipeline {
 
     environment {
         IMAGE = 'perkeylynx/university-lms'
-        PATH+DOCKER = '/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin'
     }
 
     stages {
@@ -21,13 +20,10 @@ pipeline {
         stage('Check Tools') {
             steps {
                 sh '''
-                    echo "Checking Git..."
+                    export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+
                     git --version
-
-                    echo "Checking Docker..."
                     docker --version
-
-                    echo "Checking kubectl..."
                     kubectl version --client
                 '''
             }
@@ -35,28 +31,34 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $IMAGE:$BUILD_NUMBER .'
+                sh '''
+                    export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+                    docker build -t $IMAGE:$BUILD_NUMBER .
+                '''
             }
         }
 
         stage('Test Application') {
             steps {
                 sh '''
+                    export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
                     set -e
-                    docker rm -f lms-test || true
 
+                    docker rm -f lms-test || true
                     docker run -d --name lms-test \
                         -p 18081:80 $IMAGE:$BUILD_NUMBER
 
                     sleep 3
                     curl --fail http://localhost:18081/
-
                     docker rm -f lms-test
                 '''
             }
             post {
                 always {
-                    sh 'docker rm -f lms-test || true'
+                    sh '''
+                        export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+                        docker rm -f lms-test || true
+                    '''
                 }
             }
         }
@@ -71,10 +73,11 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
                         set -e
 
                         echo "$DH_TOKEN" | docker login \
-                            --username "$DH_USER" --password-stdin
+                            -u "$DH_USER" --password-stdin
 
                         docker push $IMAGE:$BUILD_NUMBER
 
@@ -96,6 +99,7 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        export PATH="/Applications/Docker.app/Contents/Resources/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
                         set -e
 
                         kubectl apply -f deployment.yaml
@@ -109,10 +113,8 @@ pipeline {
                             echo "Deployment failed. Rolling back..."
 
                             kubectl rollout undo deployment/university-lms
-
                             kubectl rollout status \
                                 deployment/university-lms --timeout=120s
-
                             exit 1
                         fi
                     '''
@@ -125,10 +127,8 @@ pipeline {
         success {
             echo 'University LMS pipeline completed successfully.'
         }
-
         failure {
             echo 'Pipeline failed. Check the stage logs.'
         }
     }
 }
-x
